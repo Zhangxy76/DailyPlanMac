@@ -109,6 +109,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         #if DEBUG
         // 调试用：-snapshot /path.png [-snapshotTab 1] 把窗口存成图片后退出
+        let tm = UserDefaults.standard.integer(forKey: "timerStart")
+        if tm > 0 { StudyTimer.shared.start(minutes: tm) }   // 调试：-timerStart 25
         if let path = UserDefaults.standard.string(forKey: "snapshot") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 guard let v = self?.panel.contentView,

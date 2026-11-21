@@ -30,6 +30,7 @@ struct ShelfView: View {
 
             ScrollView {
                 VStack(spacing: 10) {
+                    StudyTimerView()
                     if settings.showTodaySummary {
                         TodaySummaryView(onOpen: onOpen)
                     }

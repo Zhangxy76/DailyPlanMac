@@ -2,37 +2,48 @@ import SwiftUI
 import AppKit
 import UserNotifications
 
-/// 2.5 小时计时：40 分钟学 + 30 分钟逻辑 + 60 分钟动手 + 20 分钟复盘，每段到点提醒
+/// 计时器：和任务、计划都不挂钩。几个常用时长一点就开始，也能自定义分钟数；到点响一声并弹通知
 final class StudyTimer: ObservableObject {
     static let shared = StudyTimer()
 
-    struct Phase { let name: String; let minutes: Int }
-    let phases = [
-        Phase(name: "学知识点", minutes: 40),
-        Phase(name: "学计算机逻辑", minutes: 30),
-        Phase(name: "动手（项目 + 力扣）", minutes: 60),
-        Phase(name: "复盘", minutes: 20),
-    ]
+    /// 常用时长（分钟）
+    static let presets = [15, 25, 45, 60]
 
-    @Published private(set) var index = 0
-    @Published private(set) var remaining: TimeInterval = 40 * 60
+    @Published private(set) var total: TimeInterval = 0       // 这次一共多久
+    @Published private(set) var remaining: TimeInterval = 0
     @Published private(set) var running = false
-    @Published private(set) var started = false
+    @Published private(set) var finished = false
+
+    /// 上次自定义的分钟数，下次打开自定义时默认填它
+    @Published var customMinutes: Int {
+        didSet { UserDefaults.standard.set(customMinutes, forKey: "timerCustomMinutes") }
+    }
 
     private var endDate: Date?
     private var ticker: Timer?
+    private var askedPermission = false
 
-    private init() { remaining = TimeInterval(phases[0].minutes * 60) }
+    private init() {
+        let saved = UserDefaults.standard.integer(forKey: "timerCustomMinutes")
+        customMinutes = saved > 0 ? saved : 30
+    }
 
-    var phase: Phase { phases[index] }
-    var finished: Bool { started && index == phases.count - 1 && remaining <= 0 }
+    /// 有没有一个计时（在走或暂停着）
+    var active: Bool { total > 0 && !finished }
 
-    func start() {
-        if !started {
-            started = true
+    func start(minutes: Int) {
+        if !askedPermission {
+            askedPermission = true
             UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         }
-        guard !finished else { return }
+        total = TimeInterval(minutes * 60)
+        remaining = total
+        finished = false
+        resume()
+    }
+
+    func resume() {
+        guard remaining > 0 else { return }
         endDate = Date().addingTimeInterval(remaining)
         running = true
         ticker?.invalidate()
@@ -46,41 +57,32 @@ final class StudyTimer: ObservableObject {
         endDate = nil
     }
 
-    func reset() {
-        pause()
-        index = 0
-        started = false
-        remaining = TimeInterval(phases[0].minutes * 60)
+    /// 结束这次计时，回到选时长的样子
+    func stop() {
+        running = false
+        ticker?.invalidate()
+        endDate = nil
+        total = 0
+        remaining = 0
+        finished = false
     }
-
-    func skip() { advance(notify: false) }
 
     private func tick() {
         guard running, let end = endDate else { return }
         remaining = max(0, end.timeIntervalSinceNow)
-        if remaining <= 0 { advance(notify: true) }
-    }
-
-    private func advance(notify: Bool) {
-        let done = phase.name
-        if index + 1 < phases.count {
-            index += 1
-            remaining = TimeInterval(phase.minutes * 60)
-            if notify { remind("“\(done)”时间到", "下一段：\(phase.name) \(phase.minutes) 分钟") }
-            if running { endDate = Date().addingTimeInterval(remaining) }
-        } else {
-            remaining = 0
+        if remaining <= 0 {
             running = false
+            finished = true
             ticker?.invalidate()
-            if notify { remind("今天 2.5 小时完成", "记得打勾") }
+            remind()
         }
     }
 
-    private func remind(_ title: String, _ body: String) {
+    private func remind() {
         NSSound(named: "Glass")?.play()
         let c = UNMutableNotificationContent()
-        c.title = title
-        c.body = body
+        c.title = "时间到"
+        c.body = "\(Int(total / 60)) 分钟计时结束"
         c.sound = .default
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
     }
@@ -88,43 +90,74 @@ final class StudyTimer: ObservableObject {
 
 struct StudyTimerView: View {
     @ObservedObject var timer = StudyTimer.shared
+    @State private var showCustom = false
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "timer").foregroundStyle(.secondary)
-            if timer.started {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(timer.finished ? "今天 2.5 小时完成" : "\(timer.index + 1)/\(timer.phases.count) \(timer.phase.name)")
-                        .font(.caption)
-                    if !timer.finished {
-                        Text(format(timer.remaining)).font(.callout.monospacedDigit())
-                    }
-                }
+            Image(systemName: "timer").foregroundStyle(timer.running ? Color.accentColor : .secondary)
+            if timer.finished {
+                Text("时间到（\(Int(timer.total / 60)) 分钟）").font(.caption)
+                Spacer()
+                Button("再来一次") { timer.start(minutes: Int(timer.total / 60)) }
+                Button("好") { timer.stop() }
+            } else if timer.active {
+                Text(format(timer.remaining)).font(.callout.monospacedDigit())
+                Text("/ \(Int(timer.total / 60)) 分钟").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button(timer.running ? "暂停" : "继续") { timer.running ? timer.pause() : timer.resume() }
+                Button { timer.stop() } label: { Image(systemName: "xmark") }.help("结束这次计时")
             } else {
-                Text("2.5 小时计时").font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            if !timer.finished {
-                Button(timer.running ? "暂停" : (timer.started ? "继续" : "开始")) {
-                    timer.running ? timer.pause() : timer.start()
+                Text("计时").font(.caption).foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                ForEach(StudyTimer.presets, id: \.self) { m in
+                    Button("\(m)") { timer.start(minutes: m) }
+                        .help("计时 \(m) 分钟")
                 }
-                if timer.started {
-                    Button { timer.skip() } label: { Image(systemName: "forward.end") }.help("跳到下一段")
-                }
-            }
-            if timer.started {
-                Button { timer.reset() } label: { Image(systemName: "arrow.counterclockwise") }.help("重来")
+                Text("分钟").font(.caption2).foregroundStyle(.secondary)
+                Button("自定义") { showCustom = true }
+                    .popover(isPresented: $showCustom, arrowEdge: .bottom) { CustomTimerForm { showCustom = false } }
             }
         }
         .controlSize(.small)
         .buttonStyle(.borderless)
         .padding(8)
         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
-        .help("40 分钟学 + 30 分钟逻辑 + 60 分钟动手 + 20 分钟复盘，每段到点提醒")
+        .help("和任务不挂钩：点一个时长就开始，到点响一声并弹通知")
     }
 
     private func format(_ t: TimeInterval) -> String {
         let s = Int(t.rounded())
-        return String(format: "%02d:%02d", s / 60, s % 60)
+        return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, s % 3600 / 60, s % 60)
+                         : String(format: "%02d:%02d", s / 60, s % 60)
+    }
+}
+
+/// 自定义时长：输入分钟数
+struct CustomTimerForm: View {
+    @ObservedObject var timer = StudyTimer.shared
+    let close: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("自定义计时").font(.headline)
+            HStack {
+                TextField("分钟", value: $timer.customMinutes, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 70)
+                Stepper("分钟", value: $timer.customMinutes, in: 1...600, step: 5)
+            }
+            HStack {
+                Spacer()
+                Button("取消", action: close).keyboardShortcut(.cancelAction)
+                Button("开始") {
+                    timer.customMinutes = min(max(timer.customMinutes, 1), 600)
+                    timer.start(minutes: timer.customMinutes)
+                    close()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(14)
+        .frame(width: 240)
     }
 }
