@@ -1,0 +1,11 @@
+# 打包好的 App（用 Xcode 重新编译）
+DailyPlan.app/
+build/
+DerivedData/
+
+# Xcode 个人设置
+xcuserdata/
+*.xcuserstate
+
+# macOS
+.DS_Store

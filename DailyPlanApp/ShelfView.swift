@@ -1,0 +1,163 @@
+import SwiftUI
+
+/// 书架：像背单词 App 选单词书一样，一本书就是一个计划
+struct ShelfView: View {
+    @EnvironmentObject var store: PlanStore
+    let onOpen: (Plan) -> Void
+    @State private var showArchived = false
+
+    var body: some View {
+        let active = store.plans.filter { !$0.archived }
+        let archived = store.plans.filter { $0.archived }
+        VStack(spacing: 0) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("我的计划书").font(.title3.bold())
+                    Text("选一本计划书，开始每日学习").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Menu { AppMenuItems() } label: { Image(systemName: "gearshape") }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .help("开机启动、桌面模式、退出")
+                PinButton().buttonStyle(.borderless)
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+            Divider()
+
+            ScrollView {
+                VStack(spacing: 10) {
+                    ForEach(active) { p in
+                        BookCard(plan: p, isCurrent: p.id == store.currentPlanID) { onOpen(p) }
+                    }
+
+                    Button { PlanActions.openImport() } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "plus").font(.title3)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("新书").font(.headline)
+                                Text("导入计划文字，生成一本新书").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
+                        .overlay(RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                            .foregroundStyle(.secondary))
+                    }
+                    .buttonStyle(.plain)
+
+                    if !archived.isEmpty {
+                        DisclosureGroup(isExpanded: $showArchived) {
+                            VStack(spacing: 10) {
+                                ForEach(archived) { p in
+                                    BookCard(plan: p, isCurrent: false) { onOpen(p) }
+                                }
+                            }
+                            .padding(.top, 6)
+                        } label: {
+                            Text("已归档 \(archived.count) 本").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(12)
+            }
+        }
+    }
+}
+
+struct BookCard: View {
+    @EnvironmentObject var store: PlanStore
+    let plan: Plan
+    let isCurrent: Bool
+    let onOpen: () -> Void
+
+    var body: some View {
+        let done = store.completedCount(plan)
+        let total = plan.days.count
+        let status = store.status(plan)
+        Button(action: onOpen) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(plan.name).font(.headline).lineLimit(2).multilineTextAlignment(.leading)
+                    Spacer(minLength: 6)
+                    Text(status.rawValue)
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(color(status).opacity(0.18), in: Capsule())
+                        .foregroundStyle(color(status))
+                }
+                Text("\(total) 天 · 已完成 \(done) / \(total) · \(plan.days.first?.date ?? plan.startDate) 开始")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("连续打卡 \(store.streak(plan)) 天 · 累计 \(store.totalCheckins(plan)) 天 · 学习 \(String(format: "%g", store.totalHours(plan))) 小时")
+                    .font(.caption)
+                    .foregroundStyle(store.streak(plan) > 0 ? Color.orange : .secondary)
+                if let last = store.lastStudied(plan) {
+                    Text("上次学到 Day \(last.day)：\(last.learnTopic)")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                HStack(spacing: 8) {
+                    ProgressView(value: Double(done), total: Double(max(total, 1)))
+                    Text("\(total == 0 ? 0 : done * 100 / total)%")
+                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(isCurrent ? Color.accentColor : Color.secondary.opacity(0.25), lineWidth: isCurrent ? 1.5 : 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button("打开") { onOpen() }
+            Button("编辑这本书…") { PlanActions.openEditor(plan) }
+            Button("导出打勾记录（Markdown）…") { PlanActions.export(plan) }
+            Divider()
+            Button(plan.archived ? "取消归档" : "归档") { store.setArchived(plan.id, !plan.archived) }
+            Button("删除这本书…", role: .destructive) { PlanActions.confirmDelete(plan) }
+        }
+        .help("点一下进去学这本书；右键可以编辑、归档、删除")
+    }
+
+    private func color(_ s: PlanStore.BookStatus) -> Color {
+        switch s {
+        case .studying: return .accentColor
+        case .finished: return .green
+        case .ended: return .secondary
+        case .notStarted: return .orange
+        case .archived: return .secondary
+        }
+    }
+}
+
+/// 窗口里的 App 菜单：菜单栏图标被刘海挡住时也能找到开机启动、桌面模式、退出
+struct AppMenuItems: View {
+    @EnvironmentObject var settings: WindowSettings
+
+    var body: some View {
+        Toggle("开机启动", isOn: Binding(
+            get: { LoginItem.isEnabled },
+            set: { on in
+                UserDefaults.standard.set(!on, forKey: "loginItemUserDisabled")
+                LoginItem.set(on)
+            }))
+        Toggle("钉住（一直在最前面）", isOn: $settings.pinned).disabled(settings.desktopMode)
+        Toggle("桌面模式（贴在桌面上）", isOn: $settings.desktopMode)
+        Toggle("在程序坞显示", isOn: $settings.showInDock)
+        Toggle("复习 / 重做提醒发系统通知", isOn: Binding(
+            get: { UserDefaults.standard.bool(forKey: "reviewNotify") },
+            set: { on in
+                UserDefaults.standard.set(on, forKey: "reviewNotify")
+                if on { ReviewNotifier.requestPermission() }
+            }))
+        Divider()
+        Button("隐藏窗口") { AppDelegate.shared.panel.orderOut(nil) }
+        Button("退出每日计划（⌘Q）") { NSApp.terminate(nil) }
+    }
+}
