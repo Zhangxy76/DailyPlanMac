@@ -34,32 +34,7 @@ struct ContentView: View {
                     page = .today
                 }
             } else if let plan = store.currentPlan {
-                BookHeader(plan: plan, page: $page)
-                Divider()
-                Group {
-                    switch page {
-                    case .today, .shelf:
-                        TodayView(plan: plan)
-                    case .overview:
-                        OverviewView(plan: plan, onOpenWrongBook: { page = .wrongBook }) { page = .day($0.id) }
-                    case .wrongBook:
-                        WrongBookView(plan: plan)
-                    case .day(let id):
-                        if let day = plan.days.first(where: { $0.id == id }) {
-                            ScrollView {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Day \(day.day) · \(DateUtil.display(day.date))")
-                                        .font(.subheadline.bold())
-                                    DayDetail(plan: plan, day: day)
-                                }
-                                .padding(12)
-                            }
-                        } else {
-                            OverviewView(plan: plan, onOpenWrongBook: { page = .wrongBook }) { page = .day($0.id) }
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                BookPages(plan: plan, page: $page, standalone: false)
             }
         }
         .padding(.top, 4)
@@ -72,6 +47,65 @@ struct ContentView: View {
             // 当前这本书被删了 → 回书架
             if let id = store.currentPlanID, !ids.contains(id) { page = .shelf }
         }
+    }
+}
+
+/// 一本书里的页面：今天 / 总览 / 错题本 / 某一天。主窗口和“单独窗口”共用
+struct BookPages: View {
+    let plan: Plan
+    @Binding var page: Page
+    let standalone: Bool          // true = 单独弹出的窗口，固定显示这本书，没有“书架”按钮
+
+    var body: some View {
+        VStack(spacing: 0) {
+            BookHeader(plan: plan, page: $page, standalone: standalone)
+            Divider()
+            Group {
+                switch page {
+                case .today, .shelf:
+                    TodayView(plan: plan)
+                case .overview:
+                    OverviewView(plan: plan, onOpenWrongBook: { page = .wrongBook }) { page = .day($0.id) }
+                case .wrongBook:
+                    WrongBookView(plan: plan)
+                case .day(let id):
+                    if let day = plan.days.first(where: { $0.id == id }) {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Day \(day.day) · \(DateUtil.display(day.date))")
+                                    .font(.subheadline.bold())
+                                DayDetail(plan: plan, day: day)
+                            }
+                            .padding(12)
+                        }
+                    } else {
+                        OverviewView(plan: plan, onOpenWrongBook: { page = .wrongBook }) { page = .day($0.id) }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+    }
+}
+
+/// 单独弹出的窗口：固定显示一本书
+struct BookWindowView: View {
+    @EnvironmentObject var store: PlanStore
+    let planID: UUID
+    @State private var page: Page = .today
+
+    var body: some View {
+        Group {
+            if let plan = store.plans.first(where: { $0.id == planID }) {
+                BookPages(plan: plan, page: $page, standalone: true)
+            } else {
+                Text("这本书已经删除了").foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .padding(.top, 4)
+        .frame(minWidth: 300, minHeight: 360)
+        .background(.regularMaterial)
     }
 }
 
@@ -94,6 +128,7 @@ struct BookHeader: View {
     @EnvironmentObject var store: PlanStore
     let plan: Plan
     @Binding var page: Page
+    var standalone = false
     @State private var addingTask = false
 
     /// “+”加到哪一天：看某一天时加到那天，其他页面加到今天这一天
@@ -113,7 +148,12 @@ struct BookHeader: View {
                 case .overview:
                     Button { page = .today } label: { Label("今天", systemImage: "chevron.left") }
                 default:
-                    Button { page = .shelf } label: { Label("书架", systemImage: "chevron.left") }
+                    if standalone {
+                        Label("单独窗口", systemImage: "macwindow").foregroundStyle(.secondary)
+                            .help("这个窗口固定显示这一本书；关掉它不影响主窗口")
+                    } else {
+                        Button { page = .shelf } label: { Label("书架", systemImage: "chevron.left") }
+                    }
                 }
                 Spacer()
                 if page == .today {
@@ -121,6 +161,12 @@ struct BookHeader: View {
                         .help("看全部 \(plan.days.count) 天")
                 }
                 Menu {
+                    if standalone {
+                        Button("关闭这个窗口") { AppDelegate.shared.closeBookWindow(plan.id) }
+                    } else {
+                        Button("在新窗口打开") { AppDelegate.shared.openBookWindow(plan.id) }
+                    }
+                    Divider()
                     Button("编辑这本书…") { PlanActions.openEditor(plan) }
                     Button("导出打勾记录（Markdown）…") { PlanActions.export(plan) }
                     Toggle("保底 1.5 小时版（打卡按 1.5 小时计）", isOn: Binding(

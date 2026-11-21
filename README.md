@@ -55,6 +55,16 @@ xcodebuild -project DailyPlan.xcodeproj -scheme DailyPlan -configuration Release
 | 加新书 | 点书架上的 **+ 新书**，见下面的“导入新书” |
 | 编辑 / 导出 / 归档 / 删除 | 右键卡片，或者进书后点右上角的 ⋯。删除前会先确认；暂时不学的书可以归档，归档的书收在书架底部的“已归档”里，点开还能看 |
 
+### 同时学好几本书
+
+两种方式都有，自己选：
+
+- **书架顶部的“今天要做”**：把所有“在学中”的书今天的内容排在一起，包括学什么、力扣、临时任务。可以直接打勾，算进各自那本书的打卡。点书名进到那本书；书名右边的 🔥 是连续打卡天数。不想要这块的话，在齿轮 ⚙︎ 菜单里取消“书架顶部显示‘今天要做’”
+- **在新窗口打开**：右键书卡片，或者在书里点 ⋯，选“在新窗口打开”；也可以点“今天要做”里书名右边的 ⊞。打开后会单独弹出一个窗口，固定显示这本书，左上角写着“单独窗口”
+  - 可以开好几个，各自拖到桌面不同的位置
+  - 钉住 / 桌面模式对所有窗口一起生效
+  - 关掉单独窗口不影响主窗口；开着的单独窗口，下次打开 App 会自动恢复
+
 每本书都单独存档：天数、打勾、备注都是分开的，换书不会互相覆盖。Python 30 天只是第一次打开时放进书架的第一本书。删了它，App 照样能用，也不会再自动加回来。
 
 ## 一本书里怎么用
@@ -167,11 +177,11 @@ DailyPlanMac/
 ├── DailyPlan.xcodeproj
 ├── DailyPlanApp/
 │   ├── DailyPlanApp.swift     # 入口
-│   ├── FloatingWindow.swift   # 浮动窗口（钉住 / 桌面模式）、菜单栏、开机启动
+│   ├── FloatingWindow.swift   # 浮动窗口（钉住 / 桌面模式）、每本书的单独窗口、菜单栏、开机启动
 │   ├── PlanModel.swift        # 数据模型、日期工具
 │   ├── PlanParser.swift       # 粘贴文字 → 每天的任务
 │   ├── ProgressStore.swift    # plans.json / progress.json 读写、今天是 Day 几
-│   ├── ShelfView.swift        # 书架
+│   ├── ShelfView.swift        # 书架、“今天要做”汇总
 │   ├── ContentView.swift      # 页面切换、今天页、总览、备注卡片
 │   ├── StudyTimer.swift       # 2.5 小时计时
 │   ├── CheckinModel.swift     # 打卡 / 复习 / 错题本的数据结构

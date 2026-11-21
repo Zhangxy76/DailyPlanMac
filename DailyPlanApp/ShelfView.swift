@@ -3,6 +3,7 @@ import SwiftUI
 /// 书架：像背单词 App 选单词书一样，一本书就是一个计划
 struct ShelfView: View {
     @EnvironmentObject var store: PlanStore
+    @EnvironmentObject var settings: WindowSettings
     let onOpen: (Plan) -> Void
     @State private var showArchived = false
 
@@ -29,6 +30,9 @@ struct ShelfView: View {
 
             ScrollView {
                 VStack(spacing: 10) {
+                    if settings.showTodaySummary {
+                        TodaySummaryView(onOpen: onOpen)
+                    }
                     ForEach(active) { p in
                         BookCard(plan: p, isCurrent: p.id == store.currentPlanID) { onOpen(p) }
                     }
@@ -116,6 +120,7 @@ struct BookCard: View {
         .buttonStyle(.plain)
         .contextMenu {
             Button("打开") { onOpen() }
+            Button("在新窗口打开") { AppDelegate.shared.openBookWindow(plan.id) }
             Button("编辑这本书…") { PlanActions.openEditor(plan) }
             Button("导出打勾记录（Markdown）…") { PlanActions.export(plan) }
             Divider()
@@ -150,6 +155,7 @@ struct AppMenuItems: View {
         Toggle("钉住（一直在最前面）", isOn: $settings.pinned).disabled(settings.desktopMode)
         Toggle("桌面模式（贴在桌面上）", isOn: $settings.desktopMode)
         Toggle("在程序坞显示", isOn: $settings.showInDock)
+        Toggle("书架顶部显示“今天要做”", isOn: $settings.showTodaySummary)
         Toggle("复习 / 重做提醒发系统通知", isOn: Binding(
             get: { UserDefaults.standard.bool(forKey: "reviewNotify") },
             set: { on in
@@ -159,5 +165,88 @@ struct AppMenuItems: View {
         Divider()
         Button("隐藏窗口") { AppDelegate.shared.panel.orderOut(nil) }
         Button("退出每日计划（⌘Q）") { NSApp.terminate(nil) }
+    }
+}
+
+// MARK: - 书架顶部：今天要做（所有在学的书的今天，放在一起）
+
+struct TodaySummaryView: View {
+    @EnvironmentObject var store: PlanStore
+    let onOpen: (Plan) -> Void
+
+    struct Item: Identifiable {
+        let plan: Plan
+        let day: PlanDay
+        var id: UUID { plan.id }
+    }
+
+    var body: some View {
+        let items: [Item] = store.plans.filter { !$0.archived }.compactMap { p in
+            if case .active(let d) = store.state(for: p) { return Item(plan: p, day: d) }
+            return nil
+        }
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("今天要做").font(.headline)
+                    Spacer()
+                    Text(DateUtil.display(store.today)).font(.caption).foregroundStyle(.secondary)
+                }
+                ForEach(items) { item in
+                    BookToday(plan: item.plan, day: item.day, onOpen: { onOpen(item.plan) })
+                    if item.id != items.last?.id { Divider() }
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    /// 一本书今天的几行：学什么、力扣、临时 / 重复任务，都能直接打勾
+    struct BookToday: View {
+        @EnvironmentObject var store: PlanStore
+        let plan: Plan
+        let day: PlanDay
+        let onOpen: () -> Void
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Button(action: onOpen) {
+                        HStack(spacing: 4) {
+                            Text(plan.name).font(.subheadline.bold()).lineLimit(1)
+                            Text("· Day \(day.day)").font(.caption).foregroundStyle(.secondary)
+                            Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("进到这本书")
+                    Spacer()
+                    if store.streak(plan) > 0 {
+                        Label("\(store.streak(plan))", systemImage: "flame.fill")
+                            .font(.caption).foregroundStyle(.orange)
+                            .help("已连续打卡 \(store.streak(plan)) 天")
+                    }
+                    Button { AppDelegate.shared.openBookWindow(plan.id) } label: {
+                        Image(systemName: "macwindow.badge.plus")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("在新窗口打开这本书")
+                }
+                CheckRow(checked: store.binding(plan, day.date, \.learn),
+                         text: "学什么：\(day.learnTopic)", review: false, onTap: onOpen)
+                if !day.leetcode.isEmpty {
+                    CheckRow(checked: store.binding(plan, day.date, \.leetcode),
+                             text: "力扣：\(day.leetcode.title)", review: false, onTap: onOpen)
+                }
+                ForEach(store.tasks(plan, day.date)) { row in
+                    CheckRow(checked: Binding(get: { row.done },
+                                              set: { _ in store.toggleTask(plan, day.date, row) }),
+                             text: row.text, review: false, onTap: onOpen)
+                }
+            }
+        }
     }
 }
