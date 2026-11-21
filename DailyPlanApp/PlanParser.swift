@@ -95,7 +95,7 @@ enum PlanParser {
             // AI 拿不准时会写“待确认”，标出来让用户改
             let n = days[i].notes
             let fields: [(String, String)] = [("学什么", days[i].learnTopic + n.learnDetail),
-                                              ("直接搜什么", n.searchPython.joined()), ("计算机逻辑搜什么", n.searchLogic.joined()),
+                                              ("直接搜什么", n.searchPython.joined()), (n.logicTitle, n.searchLogic.joined()),
                                               ("动手做什么", n.whatToDo), ("过关标准", n.passCriteria), ("力扣", days[i].leetcode.title)]
             for (k, v) in fields where v.contains("待确认") { days[i].needsReview.append("“\(k)”写的是待确认") }
             if mode == "day" {
@@ -180,10 +180,16 @@ enum PlanParser {
 
     private static func apply(key: String, value: String, to d: inout PlanDay) {
         let v = stripMarkdown(value)
-        if key.contains("直接搜") || (key.contains("搜") && !key.contains("逻辑")) {
-            d.notes.searchPython = searchTerms(value)
-        } else if key.contains("逻辑") {
+        // “背景原理搜什么”和旧的“计算机逻辑搜什么”是同一个字段，先认它，免得被下面的“搜”抢走
+        if key.contains("逻辑") || key.contains("背景") || key.contains("原理") {
             d.notes.searchLogic = searchTerms(value)
+            d.notes.logicLabel = key
+        } else if key.contains("直接搜") || key.contains("搜") {
+            d.notes.searchPython = searchTerms(value)
+        } else if key.contains("复刻项目") {
+            d.notes.project = v
+        } else if key.contains("练习") || key.contains("作业") {
+            d.notes.practice = v
         } else if key.contains("学什么") {
             d.notes.learnDetail = v
             if d.learnTopic.isEmpty { d.learnTopic = v }
@@ -269,11 +275,11 @@ enum PlanParser {
     // MARK: - 小工具
 
     /// 不带 “- ” 的 `学什么：…`：只认已知的标签，免得把正文里带冒号的句子拆错
-    private static let knownKeys = ["学什么", "搜", "逻辑", "动手", "要做什么", "怎么做", "方法", "步骤",
-                                    "过关", "标准", "力扣", "leetcode", "复刻项目"]
+    private static let knownKeys = ["学什么", "搜", "逻辑", "背景", "原理", "动手", "要做什么", "怎么做", "方法", "步骤",
+                                    "过关", "标准", "力扣", "leetcode", "复刻项目", "练习", "作业"]
 
     private static func plainLabel(_ line: String) -> (String, String)? {
-        guard let m = firstMatch(#"^\**([^*：:]{1,12}?)\**\s*[：:]\s*(.*)$"#, in: line) else { return nil }
+        guard let m = firstMatch(#"^\**([^*：:]{1,14}?)\**\s*[：:]\s*(.*)$"#, in: line) else { return nil }
         let key = m[1].trimmingCharacters(in: .whitespaces)
         guard knownKeys.contains(where: { key.lowercased().contains($0) }) else { return nil }
         return (key, m[2])

@@ -54,6 +54,16 @@ final class PlanStore: ObservableObject {
            let p = try? dec.decode([String: BookProgress].self, from: data) {
             progress = p
         }
+        // 旧版本导入的书没记第二个搜索词的标签：按导入原文补上，原来叫“计算机逻辑搜什么”的继续这么叫
+        for i in plans.indices {
+            let label = plans[i].rawText.contains("计算机逻辑搜什么") ? "计算机逻辑搜什么"
+                : plans[i].rawText.contains("背景原理搜什么") ? "背景原理搜什么" : nil
+            guard let label else { continue }
+            for j in plans[i].days.indices where plans[i].days[j].notes.logicLabel == nil
+                && !plans[i].days[j].notes.searchLogic.isEmpty {
+                plans[i].days[j].notes.logicLabel = label
+            }
+        }
         // 只在第一次打开（还没有 plans.json）时放进预置的书；之后用户删掉它，App 照常用，不会再塞回来
         if !FileManager.default.fileExists(atPath: plansURL.path), let preset = Self.presetPlan() {
             plans = [preset]

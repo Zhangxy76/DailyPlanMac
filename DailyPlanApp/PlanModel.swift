@@ -8,7 +8,34 @@ struct DayNotes: Codable, Hashable {
     var searchPython: [String] = []   // 直接搜什么
     var searchLogic: [String] = []    // 计算机逻辑搜什么
     var passCriteria: String = ""     // 过关标准
+    var project: String = ""          // 复刻项目（选填）
+    var practice: String = ""         // 练习 / 作业（选填）
+    var logicLabel: String? = nil     // 原文里第二个搜索词的标签：“计算机逻辑搜什么” 或 “背景原理搜什么”
     var extra: String = ""            // 解析不出归类的原文，原样保留
+
+    /// 显示用的标签；没记下来就用通用的叫法
+    var logicTitle: String { logicLabel ?? "背景原理搜什么" }
+
+    init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case learnDetail, whatToDo, howToDo, searchPython, searchLogic, passCriteria, project, practice, logicLabel, extra
+    }
+
+    /// 字段都可以缺：旧版本存的 plans.json 没有 project / practice / logicLabel
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        learnDetail = try c.decodeIfPresent(String.self, forKey: .learnDetail) ?? ""
+        whatToDo = try c.decodeIfPresent(String.self, forKey: .whatToDo) ?? ""
+        howToDo = try c.decodeIfPresent(String.self, forKey: .howToDo) ?? ""
+        searchPython = try c.decodeIfPresent([String].self, forKey: .searchPython) ?? []
+        searchLogic = try c.decodeIfPresent([String].self, forKey: .searchLogic) ?? []
+        passCriteria = try c.decodeIfPresent(String.self, forKey: .passCriteria) ?? ""
+        project = try c.decodeIfPresent(String.self, forKey: .project) ?? ""
+        practice = try c.decodeIfPresent(String.self, forKey: .practice) ?? ""
+        logicLabel = try c.decodeIfPresent(String.self, forKey: .logicLabel)
+        extra = try c.decodeIfPresent(String.self, forKey: .extra) ?? ""
+    }
 }
 
 struct LeetCode: Codable, Hashable {

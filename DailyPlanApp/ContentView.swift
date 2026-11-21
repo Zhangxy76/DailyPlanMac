@@ -356,11 +356,13 @@ struct NoteCard: View {
                 // 没写的项直接不显示
                 if !n.whatToDo.isEmpty { Section2("要做什么") { Body2(n.whatToDo) } }
                 if !n.howToDo.isEmpty { Section2("怎么做") { Body2(n.howToDo) } }
+                if !n.practice.isEmpty { Section2("练习 / 作业") { Body2(n.practice) } }
+                if !n.project.isEmpty { Section2("复刻项目") { Body2(n.project) } }
                 if !n.searchPython.isEmpty || !n.searchLogic.isEmpty || !n.passCriteria.isEmpty || !n.extra.isEmpty {
                 Section2("其他") {
                     VStack(alignment: .leading, spacing: 6) {
                         if !n.searchPython.isEmpty { CopyList(label: "直接搜什么", terms: n.searchPython) }
-                        if !n.searchLogic.isEmpty { CopyList(label: "计算机逻辑搜什么", terms: n.searchLogic) }
+                        if !n.searchLogic.isEmpty { CopyList(label: n.logicTitle, terms: n.searchLogic) }
                         if !n.passCriteria.isEmpty {
                             Text("过关标准").font(.caption).foregroundStyle(.secondary)
                             Text(n.passCriteria).font(.callout)
