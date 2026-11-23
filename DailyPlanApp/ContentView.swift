@@ -16,6 +16,8 @@ struct ContentView: View {
     @EnvironmentObject var store: PlanStore
     @EnvironmentObject var settings: WindowSettings
     @State private var page: Page = ContentView.initialPage
+    /// 从哪里进的书：书里左上角的返回按钮回到这里（书架 或 今天要做）
+    @State private var home: Page = UserDefaults.standard.string(forKey: "snapshotPage") == "bookFromToday" ? .todayAll : .shelf
 
     /// 打开 App 先看到书架（调试截图时可以用 -snapshotPage today / overview 直接进书）
     static var initialPage: Page {
@@ -24,6 +26,7 @@ struct ContentView: View {
         case "overview": return .overview
         case "wrongBook": return .wrongBook
         case "todayAll": return .todayAll
+        case "bookFromToday": return .today        // 调试：假装是从“今天要做”点进来的
         default: return .shelf
         }
     }
@@ -33,15 +36,17 @@ struct ContentView: View {
             if page == .todayAll {
                 TodayAllView(onBack: { page = .shelf }) { plan in
                     store.currentPlanID = plan.id
+                    home = .todayAll
                     page = .today
                 }
             } else if page == .shelf || store.currentPlan == nil {
                 ShelfView(onOpen: { plan in
                     store.currentPlanID = plan.id
+                    home = .shelf
                     page = .today
                 }, onOpenToday: { page = .todayAll })
             } else if let plan = store.currentPlan {
-                BookPages(plan: plan, page: $page, standalone: false)
+                BookPages(plan: plan, page: $page, standalone: false, home: home)
             }
         }
         .padding(.top, 4)
@@ -62,10 +67,11 @@ struct BookPages: View {
     let plan: Plan
     @Binding var page: Page
     let standalone: Bool          // true = 单独弹出的窗口，固定显示这本书，没有“书架”按钮
+    var home: Page = .shelf       // 左上角返回到哪：书架 或 今天要做
 
     var body: some View {
         VStack(spacing: 0) {
-            BookHeader(plan: plan, page: $page, standalone: standalone)
+            BookHeader(plan: plan, page: $page, standalone: standalone, home: home)
             Divider()
             Group {
                 switch page {
@@ -136,6 +142,7 @@ struct BookHeader: View {
     let plan: Plan
     @Binding var page: Page
     var standalone = false
+    var home: Page = .shelf
     @State private var addingTask = false
 
     /// “+”加到哪一天：看某一天时加到那天，其他页面加到今天这一天
@@ -159,7 +166,9 @@ struct BookHeader: View {
                         Label("单独窗口", systemImage: "macwindow").foregroundStyle(.secondary)
                             .help("这个窗口固定显示这一本书；关掉它不影响主窗口")
                     } else {
-                        Button { page = .shelf } label: { Label("书架", systemImage: "chevron.left") }
+                        Button { page = home } label: {
+                            Label(home == .todayAll ? "今天要做" : "书架", systemImage: "chevron.left")
+                        }
                     }
                 }
                 Spacer()
