@@ -107,8 +107,29 @@ final class PlanStore: ObservableObject {
 
     func updatePlan(_ plan: Plan) {
         guard let i = plans.firstIndex(where: { $0.id == plan.id }) else { addPlan(plan); return }
+        let old = plans[i]
         plans[i] = plan
         savePlans()
+        moveDayProgress(from: old, to: plan)
+    }
+
+    /// 某一天的日期改了：那天的打勾、备注、今天最重要的一件事、临时任务跟着搬到新日期。
+    /// （打卡、补打、复习安排是按真实日历记的历史，不动）
+    private func moveDayProgress(from old: Plan, to new: Plan) {
+        let oldDate = Dictionary(old.days.map { ($0.id, $0.date) }, uniquingKeysWith: { a, _ in a })
+        let moves: [(from: String, to: String)] = new.days.compactMap { d in
+            guard let o = oldDate[d.id], o != d.date else { return nil }
+            return (o, d.date)
+        }
+        guard !moves.isEmpty, progress[new.id.uuidString] != nil else { return }
+        mutate(new) { b in
+            // 先全部取出来再放回去，避免挪动时互相覆盖（比如整体往后挪 2 天）
+            let saved = moves.map { b.days.removeValue(forKey: $0.from) }
+            for (k, m) in moves.enumerated() {
+                guard let p = saved[k] else { continue }
+                if b.days[m.to] == nil { b.days[m.to] = p } else { b.days[m.from] = p }   // 新日期上已经有别的记录就不覆盖
+            }
+        }
     }
 
     func deletePlan(_ id: UUID) {

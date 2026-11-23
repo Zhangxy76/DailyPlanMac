@@ -120,6 +120,37 @@ struct Plan: Codable, Identifiable, Hashable {
 
     var endDate: String { days.last?.date ?? startDate }
 
+    /// 改某一天的日期。shiftFollowing = true 时，它后面的每一天都挪同样的天数（保持间隔不变）；
+    /// 然后按日期重新排序、重新编 Day 号
+    /// 改完会有两天同一个日期的话不改，返回 false（打勾是按日期存的，同一天两份会串）
+    @discardableResult
+    mutating func changeDate(of id: UUID, to newDate: String, shiftFollowing: Bool) -> Bool {
+        days.sort { $0.date < $1.date }
+        guard let i = days.firstIndex(where: { $0.id == id }), newDate != days[i].date,
+              let old = DateUtil.date(days[i].date), let new = DateUtil.date(newDate),
+              let delta = DateUtil.calendar.dateComponents([.day], from: old, to: new).day else { return false }
+        var next = days
+        next[i].date = newDate
+        if shiftFollowing {
+            for j in next.indices where j > i { next[j].date = DateUtil.adding(days: delta, to: next[j].date) }
+        }
+        guard Set(next.map(\.date)).count == next.count else { return false }
+        days = next
+        days.sort { $0.date < $1.date }
+        for k in days.indices { days[k].day = k + 1 }
+        startDate = days.first?.date ?? startDate
+        return true
+    }
+
+    /// 这一天的日期能选的范围：不能早于前一天；不顺延时也不能晚于后一天（免得两天撞日期）
+    func dateRange(for id: UUID, shiftFollowing: Bool) -> (min: String?, max: String?) {
+        let sorted = days.sorted { $0.date < $1.date }
+        guard let i = sorted.firstIndex(where: { $0.id == id }) else { return (nil, nil) }
+        let lo = i > 0 ? DateUtil.adding(days: 1, to: sorted[i - 1].date) : nil
+        let hi = (!shiftFollowing && i + 1 < sorted.count) ? DateUtil.adding(days: -1, to: sorted[i + 1].date) : nil
+        return (lo, hi)
+    }
+
     init(id: UUID = UUID(), name: String, startDate: String, days: [PlanDay], rawText: String,
          importStartDate: String? = nil, archived: Bool = false) {
         self.id = id; self.name = name; self.startDate = startDate; self.days = days

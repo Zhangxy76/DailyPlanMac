@@ -90,6 +90,7 @@ struct PlanEditor: View {
     let warnings: [String]
     let close: () -> Void
     @State private var selection: PlanDay.ID?
+    @AppStorage("shiftFollowingDays") private var shiftFollowing = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -142,7 +143,10 @@ struct PlanEditor: View {
                 // 右：编辑选中的那天
                 Group {
                     if let id = selection, let i = draft.days.firstIndex(where: { $0.id == id }) {
-                        DayEditor(day: $draft.days[i], onDateChange: { sortByDate() })
+                        DayEditor(day: $draft.days[i], shiftFollowing: $shiftFollowing,
+                                  range: draft.dateRange(for: id, shiftFollowing: shiftFollowing)) { newDate in
+                            draft.changeDate(of: id, to: newDate, shiftFollowing: shiftFollowing)
+                        }
                     } else {
                         Text("在左边选一天来改").foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -181,10 +185,6 @@ struct PlanEditor: View {
         draft.startDate = draft.days.first?.date ?? draft.startDate
     }
 
-    private func sortByDate() {
-        draft.days.sort { $0.date < $1.date }
-        renumber()
-    }
 
     private func addDay() {
         let idx = selection.flatMap { id in draft.days.firstIndex { $0.id == id } } ?? (draft.days.count - 1)
@@ -227,7 +227,9 @@ struct PlanEditor: View {
 
 struct DayEditor: View {
     @Binding var day: PlanDay
-    let onDateChange: () -> Void
+    @Binding var shiftFollowing: Bool
+    let range: (min: String?, max: String?)
+    let onDateChange: (String) -> Void
 
     var body: some View {
         Form {
@@ -235,10 +237,15 @@ struct DayEditor: View {
                 HStack {
                     Text("Day \(day.day)").font(.headline)
                     Spacer()
-                    DatePicker("日期", selection: Binding(
-                        get: { DateUtil.date(day.date) ?? Date() },
-                        set: { day.date = DateUtil.string($0); onDateChange() }),
-                               displayedComponents: .date)
+                    datePicker
+                }
+                Toggle("改日期时，后面的天跟着顺延", isOn: $shiftFollowing)
+                    .help("打开：后面每一天都挪同样的天数；关掉：只改这一天")
+                if let lo = range.min {
+                    Text("最早只能选到 \(DateUtil.short(lo))（前一天的后一天）\(range.max.map { "，最晚 \(DateUtil.short($0))（后一天的前一天）" } ?? "")")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else if let hi = range.max {
+                    Text("最晚只能选到 \(DateUtil.short(hi))（后一天的前一天）").font(.caption).foregroundStyle(.secondary)
                 }
                 TextField("学什么（列表上显示的标题）", text: $day.learnTopic)
             }
@@ -269,6 +276,22 @@ struct DayEditor: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// 日期选择：按范围限制，免得两天撞同一个日期
+    @ViewBuilder private var datePicker: some View {
+        let b = Binding<Date>(get: { DateUtil.date(day.date) ?? Date() },
+                              set: { onDateChange(DateUtil.string($0)) })
+        let lo = range.min.flatMap(DateUtil.date), hi = range.max.flatMap(DateUtil.date)
+        if let lo, let hi, lo <= hi {
+            DatePicker("日期", selection: b, in: lo...hi, displayedComponents: .date)
+        } else if let lo {
+            DatePicker("日期", selection: b, in: lo..., displayedComponents: .date)
+        } else if let hi {
+            DatePicker("日期", selection: b, in: ...hi, displayedComponents: .date)
+        } else {
+            DatePicker("日期", selection: b, displayedComponents: .date)
+        }
     }
 
     private func field(_ title: String, _ b: Binding<String>) -> some View {
