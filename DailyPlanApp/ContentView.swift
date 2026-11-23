@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 /// 页面：书架 → 某本书的今天页 → 总览 → 某一天
 enum Page: Equatable {
     case shelf
+    case todayAll           // 只显示今天要做的（所有在学的书），不带书架
     case today
     case overview
     case wrongBook
@@ -22,17 +23,23 @@ struct ContentView: View {
         case "today": return .today
         case "overview": return .overview
         case "wrongBook": return .wrongBook
+        case "todayAll": return .todayAll
         default: return .shelf
         }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            if page == .shelf || store.currentPlan == nil {
-                ShelfView { plan in
+            if page == .todayAll {
+                TodayAllView(onBack: { page = .shelf }) { plan in
                     store.currentPlanID = plan.id
                     page = .today
                 }
+            } else if page == .shelf || store.currentPlan == nil {
+                ShelfView(onOpen: { plan in
+                    store.currentPlanID = plan.id
+                    page = .today
+                }, onOpenToday: { page = .todayAll })
             } else if let plan = store.currentPlan {
                 BookPages(plan: plan, page: $page, standalone: false)
             }
@@ -62,7 +69,7 @@ struct BookPages: View {
             Divider()
             Group {
                 switch page {
-                case .today, .shelf:
+                case .today, .shelf, .todayAll:
                     TodayView(plan: plan)
                 case .overview:
                     OverviewView(plan: plan, onOpenWrongBook: { page = .wrongBook }) { page = .day($0.id) }

@@ -5,6 +5,7 @@ struct ShelfView: View {
     @EnvironmentObject var store: PlanStore
     @EnvironmentObject var settings: WindowSettings
     let onOpen: (Plan) -> Void
+    var onOpenToday: () -> Void = {}
     @State private var showArchived = false
 
     var body: some View {
@@ -32,7 +33,7 @@ struct ShelfView: View {
                 VStack(spacing: 10) {
                     StudyTimerView()
                     if settings.showTodaySummary {
-                        TodaySummaryView(onOpen: onOpen)
+                        TodaySummaryView(onOpen: onOpen, onOpenToday: onOpenToday)
                     }
                     ForEach(active) { p in
                         BookCard(plan: p, isCurrent: p.id == store.currentPlanID) { onOpen(p) }
@@ -174,6 +175,7 @@ struct AppMenuItems: View {
 struct TodaySummaryView: View {
     @EnvironmentObject var store: PlanStore
     let onOpen: (Plan) -> Void
+    var onOpenToday: (() -> Void)? = nil
 
     struct Item: Identifiable {
         let plan: Plan
@@ -182,17 +184,23 @@ struct TodaySummaryView: View {
     }
 
     var body: some View {
-        let items: [Item] = store.plans.filter { !$0.archived }.compactMap { p in
-            if case .active(let d) = store.state(for: p) { return Item(plan: p, day: d) }
-            return nil
-        }
+        let items = Self.items(store)
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("今天要做").font(.headline)
-                    Spacer()
-                    Text(DateUtil.display(store.today)).font(.caption).foregroundStyle(.secondary)
+                Button { onOpenToday?() } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text("今天要做").font(.headline)
+                        if onOpenToday != nil {
+                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(DateUtil.display(store.today)).font(.caption).foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .disabled(onOpenToday == nil)
+                .help("只看今天要做的")
                 ForEach(items) { item in
                     BookToday(plan: item.plan, day: item.day, onOpen: { onOpen(item.plan) })
                     if item.id != items.last?.id { Divider() }
@@ -201,6 +209,14 @@ struct TodaySummaryView: View {
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    /// 所有在学的书今天那一天
+    static func items(_ store: PlanStore) -> [Item] {
+        store.plans.filter { !$0.archived }.compactMap { p in
+            if case .active(let d) = store.state(for: p) { return Item(plan: p, day: d) }
+            return nil
         }
     }
 
@@ -247,6 +263,71 @@ struct TodaySummaryView: View {
                                               set: { _ in store.toggleTask(plan, day.date, row) }),
                              text: row.text, review: false, onTap: onOpen)
                 }
+            }
+        }
+    }
+}
+
+// MARK: - 今天要做（单独一页，只显示今天要做的，不带书架）
+
+struct TodayAllView: View {
+    @EnvironmentObject var store: PlanStore
+    let onBack: () -> Void
+    let onOpen: (Plan) -> Void
+
+    var body: some View {
+        let items = TodaySummaryView.items(store)
+        let total = items.reduce(0) { n, i in n + 1 + (i.day.leetcode.isEmpty ? 0 : 1) + store.tasks(i.plan, i.day.date).count }
+        let done = items.reduce(0) { n, i in
+            let p = store.progress(i.plan, i.day.date)
+            return n + (p.learn ? 1 : 0) + (!i.day.leetcode.isEmpty && p.leetcode ? 1 : 0)
+                + store.tasks(i.plan, i.day.date).filter(\.done).count
+        }
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Button(action: onBack) { Label("书架", systemImage: "chevron.left") }
+                    Spacer()
+                    Menu { AppMenuItems() } label: { Image(systemName: "gearshape") }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                    PinButton()
+                }
+                .buttonStyle(.borderless)
+                Text("今天要做").font(.title3.bold())
+                HStack {
+                    Text(DateUtil.display(store.today))
+                    Spacer()
+                    if total > 0 { Text("已完成 \(done) / \(total) 项") }
+                }
+                .font(.caption).foregroundStyle(.secondary)
+                if total > 0 {
+                    ProgressView(value: Double(done), total: Double(total))
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+            Divider()
+
+            ScrollView {
+                VStack(spacing: 10) {
+                    StudyTimerView()
+                    if items.isEmpty {
+                        VStack(spacing: 8) {
+                            Text("今天没有在学的书").foregroundStyle(.secondary)
+                            Button("回书架", action: onBack)
+                        }
+                        .padding(.top, 30)
+                    }
+                    ForEach(items) { item in
+                        TodaySummaryView.BookToday(plan: item.plan, day: item.day, onOpen: { onOpen(item.plan) })
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+                .padding(12)
             }
         }
     }
