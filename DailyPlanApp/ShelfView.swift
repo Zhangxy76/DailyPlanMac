@@ -226,6 +226,8 @@ struct TodaySummaryView: View {
         let plan: Plan
         let day: PlanDay
         let onOpen: () -> Void
+        @State private var showLearn = false
+        @State private var showLeet = false
 
         var body: some View {
             VStack(alignment: .leading, spacing: 6) {
@@ -252,17 +254,17 @@ struct TodaySummaryView: View {
                     .buttonStyle(.borderless)
                     .help("在新窗口打开这本书")
                 }
+                // 点具体事项看详情（和书里一样），点上面的书名才进到书里
                 CheckRow(checked: store.binding(plan, day.date, \.learn),
-                         text: "学什么：\(day.learnTopic)", review: false, onTap: onOpen)
+                         text: "学什么：\(day.learnTopic)", review: !day.needsReview.isEmpty) { showLearn = true }
+                    .popover(isPresented: $showLearn, arrowEdge: .leading) { NoteCard(plan: plan, day: day) }
                 if !day.leetcode.isEmpty {
                     CheckRow(checked: store.binding(plan, day.date, \.leetcode),
-                             text: "力扣：\(day.leetcode.title)", review: false, onTap: onOpen)
+                             text: "力扣：\(day.leetcode.title)", review: false) { showLeet = true }
+                        .popover(isPresented: $showLeet, arrowEdge: .leading) { LeetCard(plan: plan, day: day) }
                 }
-                ForEach(store.tasks(plan, day.date)) { row in
-                    CheckRow(checked: Binding(get: { row.done },
-                                              set: { _ in store.toggleTask(plan, day.date, row) }),
-                             text: row.text, review: false, onTap: onOpen)
-                }
+                // 临时 / 重复任务：点名字修改，⋯ 里能改、删（重复任务会问只改今天还是以后都改）
+                TaskSection(plan: plan, date: day.date)
             }
         }
     }
