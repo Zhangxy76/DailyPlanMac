@@ -1,0 +1,14 @@
+name: Build test
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: xcodebuild -project DailyPlan.xcodeproj -scheme DailyPlan -configuration Release -derivedDataPath build build
+      - name: Check app
+        run: ls -lh build/Build/Products/Release/DailyPlan.app
