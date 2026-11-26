@@ -102,9 +102,25 @@ struct PlanEditor: View {
             }
             .padding(12)
 
-            if !warnings.isEmpty {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(warnings, id: \.self) { Text("⚠︎ \($0)").font(.caption) }
+            // 顶部黄条：待确认的天数实时更新，右边一键“全部确认”
+            let reviewDays = draft.days.filter { !$0.needsReview.isEmpty }.count
+            let otherWarnings = warnings.filter { !$0.contains("待确认的地方") }
+            if reviewDays > 0 || !otherWarnings.isEmpty {
+                HStack(alignment: .center, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(otherWarnings, id: \.self) { Text("⚠︎ \($0)").font(.caption) }
+                        if reviewDays > 0 {
+                            Text("⚠︎ \(reviewDays) 天有待确认的地方，已标黄").font(.caption)
+                        }
+                    }
+                    Spacer()
+                    if reviewDays > 0 {
+                        Button("全部确认") {
+                            for i in draft.days.indices { draft.days[i].needsReview = [] }
+                        }
+                        .controlSize(.small)
+                        .help("一次去掉所有天的黄标。点“保存”后才生效，不想要的话点“取消”")
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(8)
